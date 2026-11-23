@@ -116,40 +116,6 @@ function playAudio(volume) {
 
     dspNode.setParamValue("/rain/volume", volume);
 }
-//------------------------------------------------------------------------------------------
-//
-//------------------------------------------------------------------------------------------
-// Edit here to define your audio controls 
-//------------------------------------------------------------------------------------------
-//
-//==========================================================================================
-
-function playAudio() {
-    if (!dspNode) {
-        return;
-    }
-    if (audioContext.state === 'suspended') {
-        return;
-    }
-    // Edit here the addresses ("/thunder/rumble") depending on your WASM controls (you can see 
-    // them printed on the console of your browser when you load the page)
-    // For example if you change to a bell sound, here you could use "/churchBell/gate" instead of
-    // "/thunder/rumble".
-    
-function playAudio(volume) {
-    if (!dspNode) {
-        return;
-    }
-
-    if (audioContext.state === "suspended") {
-        return;
-    }
-
-    dspNode.setParamValue("/rain/volume", volume);
-}
-
-    setTimeout(() => { dspNode.setParamValue("/thunder/rumble", 0) }, 100);
-}
 
 //==========================================================================================
 // END
