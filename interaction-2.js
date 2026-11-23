@@ -1,21 +1,14 @@
-//==========================================================================================
-// AUDIO SETUP
-//------------------------------------------------------------------------------------------
-//
-//------------------------------------------------------------------------------------------
-// Edit just where you're asked to!
-//------------------------------------------------------------------------------------------
-//
-//==========================================================================================
+
 let dspNode = null;
 let dspNodeParams = null;
 let jsonParams = null;
 
-// Change here to ("tuono") depending on your wasm file name
-const dspName = "bells";
+let speedParam = null;
+let lastSpeed = 0;
+
+const dspName = "engine";
 const instance = new FaustWasm2ScriptProcessor(dspName);
 
-// output to window or npm package module
 if (typeof module === "undefined") {
     window[dspName] = instance;
 } else {
@@ -24,43 +17,103 @@ if (typeof module === "undefined") {
     module.exports = exp;
 }
 
-// The name should be the same as the WASM file, so change tuono with brass if you use brass.wasm
-bells.createDSP(audioContext, 1024)
+engine.createDSP(audioContext, 1024)
     .then(node => {
         dspNode = node;
         dspNode.connect(audioContext.destination);
-        console.log('params: ', dspNode.getParams());
+
+        console.log("Engine parameters:", dspNode.getParams());
+
         const jsonString = dspNode.getJSON();
-        jsonParams = JSON.parse(jsonString)["ui"][0]["items"];
-        dspNodeParams = jsonParams
-        // const exampleMinMaxParam = findByAddress(dspNodeParams, "/thunder/rumble");
-        // // ALWAYS PAY ATTENTION TO MIN AND MAX, ELSE YOU MAY GET REALLY HIGH VOLUMES FROM YOUR SPEAKERS
-        // const [exampleMinValue, exampleMaxValue] = getParamMinMax(exampleMinMaxParam);
-        // console.log('Min value:', exampleMinValue, 'Max value:', exampleMaxValue);
+        const dspInfo = JSON.parse(jsonString);
+
+        jsonParams = dspInfo.ui[0].items;
+        dspNodeParams = jsonParams;
+
+        // Find the controls from the Faust file
+        const controls = [];
+
+        function readControls(items) {
+            for (let item of items) {
+                if (item.address && item.min !== undefined && item.max !== undefined) {
+                    controls.push(item);
+                }
+
+                if (item.items) {
+                    readControls(item.items);
+                }
+            }
+        }
+
+        readControls(dspInfo.ui);
+
+        speedParam = controls.find(item =>
+            /speed|rpm|throttle|revs|frequency|freq|pitch|rate/i.test(item.address)
+        );
+
+        if (!speedParam) {
+            speedParam = controls.find(item =>
+                !/volume|gain|level|gate|trigger/i.test(item.address)
+            );
+        }
+
+        if (speedParam) {
+            lastSpeed = Number(speedParam.min);
+            dspNode.setParamValue(speedParam.address, lastSpeed);
+            console.log("Speed control:", speedParam.address);
+        } else {
+            console.log("No engine speed control found");
+        }
+
+        const volumeParam = controls.find(item =>
+            /volume|gain|level/i.test(item.address)
+        );
+
+        if (volumeParam) {
+            const min = Number(volumeParam.min);
+            const max = Number(volumeParam.max);
+            dspNode.setParamValue(volumeParam.address, min + (max - min) * 0.2);
+        }
+
+        const gateParam = dspNode.getParams().find(address =>
+            /\/gate$|\/enable$|\/onoff$/i.test(address)
+        );
+
+        if (gateParam) {
+            dspNode.setParamValue(gateParam, 1);
+        }
+    })
+    .catch(error => {
+        console.error("Engine loading error:", error);
     });
 
 
-//==========================================================================================
-// INTERACTIONS
-//------------------------------------------------------------------------------------------
-//
-//------------------------------------------------------------------------------------------
-// Edit the next functions to create interactions
-// Decide which parameters you're using and then use playAudio to play the Audio
-//------------------------------------------------------------------------------------------
-//
-//==========================================================================================
+// Phone movement
 
 function accelerationChange(accx, accy, accz) {
-    // playAudio()
 }
 
 function rotationChange(rotx, roty, rotz) {
+    if (!dspNode || !speedParam) {
+        return;
+    }
+
+    if (audioContext.state === "suspended") {
+        return;
+    }
+
+    // Use left and right tilt
+    let tilt = Math.abs(roty);
+
+    // Limit the angle to 45 degrees
+    tilt = Math.min(tilt, 45);
+
+    let amount = tilt / 45;
+
+    playAudio(amount);
 }
 
 function mousePressed() {
-    // playAudio()
-    // Use this for debugging from the desktop!
 }
 
 function deviceMoved() {
@@ -71,41 +124,27 @@ function deviceMoved() {
 function deviceTurned() {
     threshVals[1] = turnAxis;
 }
+
 function deviceShaken() {
     shaketimer = millis();
     statusLabels[0].style("color", "pink");
-    playAudio();
 }
 
-function getMinMaxParam(address) {
-    const exampleMinMaxParam = findByAddress(dspNodeParams, address);
-    // ALWAYS PAY ATTENTION TO MIN AND MAX, ELSE YOU MAY GET REALLY HIGH VOLUMES FROM YOUR SPEAKERS
-    const [exampleMinValue, exampleMaxValue] = getParamMinMax(exampleMinMaxParam);
-    console.log('Min value:', exampleMinValue, 'Max value:', exampleMaxValue);
-    return [exampleMinValue, exampleMaxValue]
-}
 
-//==========================================================================================
-// AUDIO INTERACTION
-//------------------------------------------------------------------------------------------
-//
-//------------------------------------------------------------------------------------------
-// Edit here to define your audio controls 
-//------------------------------------------------------------------------------------------
-//
-//==========================================================================================
+// Engine sound control
 
-function playAudio() {
-    if (!dspNode) {
+function playAudio(amount) {
+    if (!dspNode || !speedParam) {
         return;
     }
-    if (audioContext.state === 'suspended') {
-        return;
-    }
-    dspNode.setParamValue("/englishBell/gate", 1)
-    setTimeout(() => { dspNode.setParamValue("/englishBell/gate", 0) }, 100);
-}
 
-//==========================================================================================
-// END
-//==========================================================================================
+    const min = Number(speedParam.min);
+    const max = Number(speedParam.max);
+
+    let targetSpeed = min + amount * (max - min);
+
+    // Smooth the sound changes
+    lastSpeed = lastSpeed * 0.7 + targetSpeed * 0.3;
+
+    dspNode.setParamValue(speedParam.address, lastSpeed);
+}
