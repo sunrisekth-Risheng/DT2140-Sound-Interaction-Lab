@@ -10,9 +10,9 @@
 let dspNode = null;
 let dspNodeParams = null;
 let jsonParams = null;
-
+let isPointingUp = false;
 // Change here to ("tuono") depending on your wasm file name
-const dspName = "tuono";
+const dspName = "rain";
 const instance = new FaustWasm2ScriptProcessor(dspName);
 
 // output to window or npm package module
@@ -25,10 +25,11 @@ if (typeof module === "undefined") {
 }
 
 // The name should be the same as the WASM file, so change tuono with brass if you use brass.wasm
-tuono.createDSP(audioContext, 1024)
+rain.createDSP(audioContext, 1024)
     .then(node => {
         dspNode = node;
         dspNode.connect(audioContext.destination);
+        dspNode.setParamValue("/rain/volume", 0);
         console.log('params: ', dspNode.getParams());
         const jsonString = dspNode.getJSON();
         jsonParams = JSON.parse(jsonString)["ui"][0]["items"];
@@ -55,13 +56,31 @@ function accelerationChange(accx, accy, accz) {
     // playAudio()
 }
 
+
 function rotationChange(rotx, roty, rotz) {
+    if (!dspNode || audioContext.state === "suspended") {
+        return;
+    }
+
+    // Phone points upward: start rain
+    if (!isPointingUp && rotx >= 70) {
+        isPointingUp = true;
+        playAudio(0.2);
+    }
+
+    // Phone moves away: stop rain
+    else if (isPointingUp && rotx <= 60) {
+        isPointingUp = false;
+        playAudio(0);
+    }
 }
 
+
 function mousePressed() {
-    playAudio()
-    // Use this for debugging from the desktop!
+    // Desktop testing is disabled.
+    // Rain is controlled by phone orientation.
 }
+
 
 function deviceMoved() {
     movetimer = millis();
@@ -74,7 +93,6 @@ function deviceTurned() {
 function deviceShaken() {
     shaketimer = millis();
     statusLabels[0].style("color", "pink");
-    playAudio();
 }
 
 function getMinMaxParam(address) {
@@ -86,7 +104,18 @@ function getMinMaxParam(address) {
 }
 
 //==========================================================================================
-// AUDIO INTERACTION
+
+function playAudio(volume) {
+    if (!dspNode) {
+        return;
+    }
+
+    if (audioContext.state === "suspended") {
+        return;
+    }
+
+    dspNode.setParamValue("/rain/volume", volume);
+}
 //------------------------------------------------------------------------------------------
 //
 //------------------------------------------------------------------------------------------
@@ -106,7 +135,19 @@ function playAudio() {
     // them printed on the console of your browser when you load the page)
     // For example if you change to a bell sound, here you could use "/churchBell/gate" instead of
     // "/thunder/rumble".
-    dspNode.setParamValue("/thunder/rumble", 1)
+    
+function playAudio(volume) {
+    if (!dspNode) {
+        return;
+    }
+
+    if (audioContext.state === "suspended") {
+        return;
+    }
+
+    dspNode.setParamValue("/rain/volume", volume);
+}
+
     setTimeout(() => { dspNode.setParamValue("/thunder/rumble", 0) }, 100);
 }
 
