@@ -35,6 +35,10 @@ function contextAudioStart() {
   if (!dspNode) {
     return;
   }
+  if (typeof startPhoneAudio === 'function') {
+    startPhoneAudio();
+    return;
+  }
   if (audioContext.state === 'suspended') {
     audioContext.resume();
     // startDsp();
@@ -55,7 +59,7 @@ function contextAudioStart() {
 function setup() {
   createCanvas(windowWidth, windowHeight);
 
-  setMotionListeners();
+  if (typeof startPhoneAudio !== "function") setMotionListeners();
 
   let valBox = createDiv();
   valBox.id("valuelabels");

@@ -17,7 +17,7 @@ if (typeof module === "undefined") {
     module.exports = exp;
 }
 
-engine.createDSP(audioContext, 1024)
+instance.createDSP(audioContext, 1024)
     .then(node => {
         dspNode = node;
         dspNode.connect(audioContext.destination);
@@ -31,57 +31,12 @@ engine.createDSP(audioContext, 1024)
         dspNodeParams = jsonParams;
 
         // Find the controls from the Faust file
-        const controls = [];
-
-        function readControls(items) {
-            for (let item of items) {
-                if (item.address && item.min !== undefined && item.max !== undefined) {
-                    controls.push(item);
-                }
-
-                if (item.items) {
-                    readControls(item.items);
-                }
-            }
-        }
-
-        readControls(dspInfo.ui);
-
-        speedParam = controls.find(item =>
-            /speed|rpm|throttle|revs|frequency|freq|pitch|rate/i.test(item.address)
-        );
-
-        if (!speedParam) {
-            speedParam = controls.find(item =>
-                !/volume|gain|level|gate|trigger/i.test(item.address)
-            );
-        }
-
-        if (speedParam) {
-            lastSpeed = Number(speedParam.min);
-            dspNode.setParamValue(speedParam.address, lastSpeed);
-            console.log("Speed control:", speedParam.address);
-        } else {
-            console.log("No engine speed control found");
-        }
-
-        const volumeParam = controls.find(item =>
-            /volume|gain|level/i.test(item.address)
-        );
-
-        if (volumeParam) {
-            const min = Number(volumeParam.min);
-            const max = Number(volumeParam.max);
-            dspNode.setParamValue(volumeParam.address, min + (max - min) * 0.2);
-        }
-
-        const gateParam = dspNode.getParams().find(address =>
-            /\/gate$|\/enable$|\/onoff$/i.test(address)
-        );
-
-        if (gateParam) {
-            dspNode.setParamValue(gateParam, 1);
-        }
+        speedParam = findByAddress(dspNodeParams, "/engine/maxSpeed");
+        lastSpeed = 0.5;
+        dspNode.setParamValue(speedParam.address, lastSpeed);
+        dspNode.setParamValue("/engine/runtime", 0.25);
+        dspNode.setParamValue("/engine/volume", 0.25);
+        dspNode.setParamValue("/engine/gate", 1);
     })
     .catch(error => {
         console.error("Engine loading error:", error);
@@ -102,13 +57,18 @@ function rotationChange(rotx, roty, rotz) {
         return;
     }
 
+    if (![rotx, roty].every(Number.isFinite)) return;
+
     // Use left and right tilt
-    let tilt = Math.abs(roty);
+    const angle = window.screen.orientation?.angle ?? window.orientation ?? 0;
+    let tilt = roty;
+    if (angle === 90) tilt = rotx;
+    if (angle === -90 || angle === 270) tilt = -rotx;
+    if (Math.abs(angle) === 180) tilt = -roty;
 
     // Limit the angle to 45 degrees
-    tilt = Math.min(tilt, 45);
-
-    let amount = tilt / 45;
+    tilt = Math.max(-45, Math.min(45, tilt));
+    const amount = (tilt + 45) / 90;
 
     playAudio(amount);
 }

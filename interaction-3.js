@@ -12,7 +12,7 @@ let dspNodeParams = null;
 let jsonParams = null;
 
 // Change here to ("tuono") depending on your wasm file name
-const dspName = "brass";
+const dspName = "wind";
 const instance = new FaustWasm2ScriptProcessor(dspName);
 
 // output to window or npm package module
@@ -25,14 +25,15 @@ if (typeof module === "undefined") {
 }
 
 // The name should be the same as the WASM file, so change tuono with brass if you use brass.wasm
-brass.createDSP(audioContext, 1024)
+instance.createDSP(audioContext, 1024)
     .then(node => {
         dspNode = node;
         dspNode.connect(audioContext.destination);
         console.log('params: ', dspNode.getParams());
         const jsonString = dspNode.getJSON();
         jsonParams = JSON.parse(jsonString)["ui"][0]["items"];
-        dspNodeParams = jsonParams
+        dspNodeParams = jsonParams;
+        dspNode.setParamValue("/wind/wind/force", 0);
         // const exampleMinMaxParam = findByAddress(dspNodeParams, "/thunder/rumble");
         // // ALWAYS PAY ATTENTION TO MIN AND MAX, ELSE YOU MAY GET REALLY HIGH VOLUMES FROM YOUR SPEAKERS
         // const [exampleMinValue, exampleMaxValue] = getParamMinMax(exampleMinMaxParam);
@@ -51,15 +52,38 @@ brass.createDSP(audioContext, 1024)
 //
 //==========================================================================================
 
+let gentleSince = null;
+let quietUntil = 0;
+let windOn = false;
+
 function accelerationChange(accx, accy, accz) {
     // playAudio()
+    if (!dspNode || audioContext.state !== "running") {
+        gentleSince = null;
+        windOn = false;
+        if (dspNode) playAudio(0);
+        return;
+    }
+    const movement = Math.hypot(accx, accy, accz);
+    const now = performance.now();
+    if (movement >= 2.4) quietUntil = now + 400;
+    if (!Number.isFinite(movement) || now < quietUntil || movement < 0.2) {
+        gentleSince = null;
+        windOn = false;
+    } else if (movement >= 0.45 && movement < 2.4) {
+        if (gentleSince === null) gentleSince = now;
+        if (now - gentleSince >= 120) windOn = true;
+    } else {
+        gentleSince = null;
+    }
+    playAudio(windOn ? 0.65 : 0);
 }
 
 function rotationChange(rotx, roty, rotz) {
 }
 
 function mousePressed() {
-    playAudio(mouseX/windowWidth)
+    // The live values on screen help with testing.
     // Use this for debugging from the desktop!
 }
 
@@ -74,7 +98,10 @@ function deviceTurned() {
 function deviceShaken() {
     shaketimer = millis();
     statusLabels[0].style("color", "pink");
-    playAudio();
+    quietUntil = performance.now() + 400;
+    gentleSince = null;
+    windOn = false;
+    playAudio(0);
 }
 
 function getMinMaxParam(address) {
@@ -99,11 +126,7 @@ function playAudio(pressure) {
     if (!dspNode) {
         return;
     }
-    if (audioContext.state === 'suspended') {
-        return;
-    }
-    console.log(pressure)
-    dspNode.setParamValue("/brass/blower/pressure", pressure)
+    dspNode.setParamValue("/wind/wind/force", pressure);
 }
 
 //==========================================================================================
